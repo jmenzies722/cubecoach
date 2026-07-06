@@ -10,7 +10,6 @@
 //   llEdges      — permute the last-layer edges
 
 import { Cube, SOLVED, invertSequence } from './cube.js';
-import KociembaCube from 'cubejs';
 
 // Bounded BFS over a set of "triggers" (each an algorithm string). Finds the
 // shortest combination reaching goalFn and applies it via the runner. Because
@@ -566,27 +565,17 @@ function solveLBL(faceletStr) {
 // doesn't converge, fall back to the verified Kociemba solver so we ALWAYS
 // return a correct solution for any cube.
 export function solve(faceletStr) {
+  let lbl;
   try {
-    const lbl = solveLBL(faceletStr);
-    if (Cube.fromString(faceletStr).moves(lbl.moves).isSolved()) return lbl;
-  } catch (e) { /* fall through to exact solver */ }
-  return solveFallback(faceletStr);
-}
-
-let _kociembaReady = false;
-function solveFallback(faceletStr) {
-  if (faceletStr === SOLVED) return { stages: buildStages(), moves: [], moveCount: 0, method: 'kociemba' };
-  if (!_kociembaReady) { KociembaCube.initSolver(); _kociembaReady = true; }
-  const sol = KociembaCube.fromString(faceletStr).solve().trim();
-  const moves = sol ? sol.split(/\s+/) : [];
-  return {
-    stages: [{
-      key: 'solution', title: 'Full Solution',
-      explanation: "This scramble took the fast exact solver. Follow each move to solve the cube — hit Scramble again for one that walks through the beginner stages.",
-      moves,
-    }],
-    moves, moveCount: moves.length, method: 'kociemba',
-  };
+    lbl = solveLBL(faceletStr);
+  } catch (e) {
+    throw new Error("Couldn't solve this cube — double-check the colours and try again.");
+  }
+  // Belt-and-braces: verify the returned moves actually solve the cube.
+  if (!Cube.fromString(faceletStr).moves(lbl.moves).isSolved()) {
+    throw new Error("Couldn't solve this cube — double-check the colours and try again.");
+  }
+  return lbl;
 }
 
 // Named exports for internal testing/debugging.

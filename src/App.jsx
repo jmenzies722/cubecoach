@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Cube3D from './ui/Cube3D.jsx';
+import DrillMode from './ui/DrillMode.jsx';
 import { Cube, SOLVED, randomScramble } from './engine/cube.js';
 import { solve } from './engine/solver.js';
 import { validateCube } from './engine/validate.js';
@@ -33,53 +34,58 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(1);
   const [error, setError] = useState(null);
-  const [painting, setPainting] = useState(false);
+  const [mode, setMode] = useState('solve'); // 'solve' | 'paint' | 'drill'
+  const [followAlong, setFollowAlong] = useState(false);
+  const [solvedCount, setSolvedCount] = useState(() => {
+    try { return Number(localStorage.getItem('cc_solved') || 0); } catch { return 0; }
+  });
 
   const playingRef = useRef(false);
   const stepRef = useRef(0);
   const speedRef = useRef(SPEEDS[1].ms);
+  const countedRef = useRef(false);
   useEffect(() => { speedRef.current = SPEEDS[speedIdx].ms; }, [speedIdx]);
   useEffect(() => { stepRef.current = step; }, [step]);
 
   const moves = solution?.moves || [];
 
+  // count a completed solve exactly once
+  useEffect(() => {
+    if (solution && moves.length > 0 && step >= moves.length && !countedRef.current) {
+      countedRef.current = true;
+      setSolvedCount((n) => { const v = n + 1; try { localStorage.setItem('cc_solved', String(v)); } catch { /* noop */ } return v; });
+    }
+  }, [step, moves.length, solution]);
+
   const loadState = useCallback((state, { push = true } = {}) => {
     setPlaying(false); playingRef.current = false;
-    setSolution(null); setStep(0); stepRef.current = 0; setError(null);
+    setSolution(null); setStep(0); stepRef.current = 0; setError(null); countedRef.current = false;
     setStartState(state);
     cubeRef.current?.setStateNow(state);
     if (push) {
       const url = new URL(window.location);
-      if (state === SOLVED) url.searchParams.delete('c');
-      else url.searchParams.set('c', state);
+      if (state === SOLVED) url.searchParams.delete('c'); else url.searchParams.set('c', state);
       window.history.replaceState({}, '', url);
     }
   }, []);
 
-  // load shared state from URL on mount
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    const c = p.get('c');
-    const s = p.get('s'); // legacy: move sequence
+    const c = p.get('c'); const s = p.get('s');
     if (c && validateCube(c).valid) loadState(c, { push: false });
     else if (s) { try { loadState(new Cube().moves(s).toString(), { push: false }); } catch { /* ignore */ } }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const doScramble = useCallback(() => {
-    loadState(new Cube().moves(randomScramble(25)).toString());
-  }, [loadState]);
+  const doScramble = useCallback(() => { setMode('solve'); loadState(new Cube().moves(randomScramble(25)).toString()); }, [loadState]);
 
   const doSolve = useCallback(() => {
-    setError(null);
+    setError(null); countedRef.current = false;
     try {
       const sol = solve(startState);
-      setSolution(sol);
-      setStep(0); stepRef.current = 0;
+      setSolution(sol); setStep(0); stepRef.current = 0;
       cubeRef.current?.setStateNow(startState);
-    } catch (e) {
-      setError(e.message || 'Could not solve this cube.');
-    }
+    } catch (e) { setError(e.message || 'Could not solve this cube.'); }
   }, [startState]);
 
   const gotoStep = useCallback((k) => {
@@ -102,12 +108,22 @@ export default function App() {
 
   const pause = useCallback(() => { setPlaying(false); playingRef.current = false; }, []);
 
+  // follow-along: animate exactly one move forward
+  const advanceOne = useCallback(async () => {
+    if (playingRef.current || stepRef.current >= moves.length) return;
+    setPlaying(true); playingRef.current = true;
+    const k = stepRef.current;
+    await cubeRef.current.apply(moves[k], Math.min(speedRef.current, 300));
+    stepRef.current = k + 1; setStep(k + 1);
+    setPlaying(false); playingRef.current = false;
+  }, [moves]);
+
   const manualTurn = useCallback(async (m) => {
-    if (playing || painting) return;
+    if (playing || mode !== 'solve') return;
     setSolution(null); setStep(0); stepRef.current = 0;
     await cubeRef.current.apply(m, 260);
     loadState(cubeRef.current.getState());
-  }, [playing, painting, loadState]);
+  }, [playing, mode, loadState]);
 
   const share = useCallback(async () => {
     try { await navigator.clipboard.writeText(window.location.href); } catch { /* noop */ }
@@ -118,13 +134,11 @@ export default function App() {
 
   return (
     <div className="min-h-full flex flex-col">
-      <Header onShare={share} canShare={startState !== SOLVED} />
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 px-4 pb-6 max-w-[1400px] w-full mx-auto">
-        <section className="relative rounded-2xl bg-panel/70 border border-edge overflow-hidden min-h-[46vh] lg:min-h-[70vh]">
+      <Header onShare={share} canShare={startState !== SOLVED} solvedCount={solvedCount} />
+      <main className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 px-3 sm:px-4 pb-6 max-w-[1400px] w-full mx-auto">
+        <section className="relative rounded-2xl bg-panel/70 border border-edge overflow-hidden min-h-[42vh] sm:min-h-[46vh] lg:min-h-[70vh] order-1">
           <Cube3D ref={cubeRef} initialState={startState} />
-          <div className="pointer-events-none absolute top-3 left-3 text-xs text-white/40 font-display tracking-wide">
-            drag to rotate · scroll to zoom
-          </div>
+          <div className="pointer-events-none absolute top-3 left-3 text-[11px] sm:text-xs text-white/40 font-display tracking-wide">drag to rotate · scroll to zoom</div>
           {isSolved && (
             <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-emerald-500/20 to-transparent text-center">
               <span className="font-display text-emerald-300 text-lg">Solved. Nice.</span>
@@ -132,36 +146,56 @@ export default function App() {
           )}
         </section>
 
-        <section className="flex flex-col gap-4">
-          {painting ? (
+        <section className="flex flex-col gap-4 order-2 min-w-0">
+          {mode === 'paint' && (
             <PaintPanel
               startState={startState}
               onPreview={(s) => cubeRef.current?.setStateNow(s)}
-              onCancel={() => { setPainting(false); cubeRef.current?.setStateNow(startState); }}
-              onUse={(s) => { setPainting(false); loadState(s); }}
+              onCancel={() => { setMode('solve'); cubeRef.current?.setStateNow(startState); }}
+              onUse={(s) => { setMode('solve'); loadState(s); }}
             />
-          ) : (
+          )}
+
+          {mode === 'drill' && (
+            <DrillMode
+              applyMove={(t, d) => cubeRef.current.apply(t, d)}
+              resetCube={() => cubeRef.current?.setStateNow(SOLVED)}
+              onClose={() => { setMode('solve'); cubeRef.current?.setStateNow(startState); }}
+            />
+          )}
+
+          {mode === 'solve' && (
             <>
               <Panel>
                 <div className="flex gap-2">
                   <button onClick={doScramble} className="btn-primary flex-1">Scramble</button>
                   <button onClick={doSolve} disabled={startState === SOLVED} className="btn-accent flex-1 disabled:opacity-40 disabled:cursor-not-allowed">Solve it</button>
                 </div>
-                <button onClick={() => { setPainting(true); }} className="mt-2 w-full py-2 rounded-xl border border-edge text-sm text-white/70 hover:text-white hover:border-white/30 transition font-display">
-                  ✎ Paint my own cube
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => setMode('paint')} className="flex-1 py-2 rounded-xl border border-edge text-sm text-white/70 hover:text-white hover:border-white/30 transition font-display">✎ Paint my cube</button>
+                  <button onClick={() => setMode('drill')} className="flex-1 py-2 rounded-xl border border-edge text-sm text-white/70 hover:text-white hover:border-white/30 transition font-display">↻ Drill an alg</button>
+                </div>
                 {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
                 <MoveGrid onTurn={manualTurn} disabled={playing} />
               </Panel>
 
               {solution ? (
                 <Panel className="flex-1 flex flex-col min-h-0">
-                  <Playback
-                    playing={playing} onPlay={play} onPause={pause}
-                    onPrev={() => gotoStep(step - 1)} onNext={() => gotoStep(step + 1)}
-                    onRestart={() => gotoStep(0)} step={step} total={moves.length}
-                    speedIdx={speedIdx} onSpeed={setSpeedIdx}
-                  />
+                  <ModeToggle followAlong={followAlong} setFollowAlong={setFollowAlong} />
+                  {followAlong ? (
+                    <FollowAlong
+                      moves={moves} step={step} stages={solution.stages} current={cur}
+                      onNext={advanceOne} onBack={() => gotoStep(step - 1)} onRestart={() => gotoStep(0)}
+                      playing={playing} isSolved={isSolved}
+                    />
+                  ) : (
+                    <Playback
+                      playing={playing} onPlay={play} onPause={pause}
+                      onPrev={() => gotoStep(step - 1)} onNext={() => gotoStep(step + 1)}
+                      onRestart={() => gotoStep(0)} step={step} total={moves.length}
+                      speedIdx={speedIdx} onSpeed={setSpeedIdx}
+                    />
+                  )}
                   <StageList
                     stages={solution.stages} current={cur}
                     onJumpStage={(i) => { let acc = 0; for (let j = 0; j < i; j++) acc += solution.stages[j].moves.length; gotoStep(acc); }}
@@ -172,9 +206,9 @@ export default function App() {
                   <p className="text-sm text-white/60 leading-relaxed">
                     <span className="font-display text-white/90">How it works.</span> Hit
                     {' '}<span className="text-indigo-300">Scramble</span> (or paint your real cube),
-                    then <span className="text-emerald-300">Solve it</span>. You'll get the solution
-                    broken into named stages — play it, step through it, and read the plain-English
-                    <em> why</em> behind each stage.
+                    then <span className="text-emerald-300">Solve it</span>. Play through the named
+                    stages, or flip on <span className="text-emerald-300">Follow along</span> to solve
+                    your physical cube move-by-move at your own pace.
                   </p>
                 </Panel>
               )}
@@ -187,32 +221,66 @@ export default function App() {
   );
 }
 
+// ---- Follow-along (solve your real cube) -----------------------------------
+
+function FollowAlong({ moves, step, stages, current, onNext, onBack, onRestart, playing, isSolved }) {
+  const nextMove = step < moves.length ? moves[step] : null;
+  const stage = current ? stages[current.index] : null;
+  return (
+    <div className="border-b border-edge pb-3 mb-3">
+      {isSolved ? (
+        <div className="text-center py-4">
+          <p className="font-display text-emerald-300 text-xl">Solved. Nice.</p>
+          <button onClick={onRestart} className="mt-3 btn-accent">Start over</button>
+        </div>
+      ) : (
+        <>
+          <p className="text-[11px] uppercase tracking-widest text-white/35">{stage ? stage.title : 'Next move'}</p>
+          <div className="flex items-center justify-center gap-4 my-2">
+            <button onClick={onBack} disabled={step === 0 || playing} className="w-11 h-11 rounded-xl bg-ink/60 border border-edge text-white/60 hover:text-white disabled:opacity-30 transition text-lg">◀</button>
+            <div className="grid place-items-center w-24 h-24 rounded-2xl bg-ink/70 border border-indigo-400/40">
+              <span className="font-display text-4xl text-indigo-200">{nextMove}</span>
+            </div>
+            <button onClick={onNext} disabled={playing} className="w-11 h-11 rounded-xl bg-emerald-500/90 text-ink hover:bg-emerald-400 disabled:opacity-40 transition text-lg font-bold">▶</button>
+          </div>
+          <button onClick={onNext} disabled={playing} className="w-full btn-accent disabled:opacity-40">Done — next move</button>
+          <p className="text-center text-xs text-white/40 font-display mt-2">move {step + 1} of {moves.length}</p>
+          <div className="mt-2 h-1.5 rounded-full bg-ink overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-indigo-400 to-emerald-400 transition-all" style={{ width: `${(step / moves.length) * 100}%` }} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ModeToggle({ followAlong, setFollowAlong }) {
+  return (
+    <div className="flex rounded-xl bg-ink/60 border border-edge p-1 mb-3 text-sm font-display">
+      <button onClick={() => setFollowAlong(false)} className={`flex-1 py-1.5 rounded-lg transition ${!followAlong ? 'bg-indigo-500/20 text-indigo-200' : 'text-white/50 hover:text-white/80'}`}>Auto-play</button>
+      <button onClick={() => setFollowAlong(true)} className={`flex-1 py-1.5 rounded-lg transition ${followAlong ? 'bg-emerald-500/20 text-emerald-200' : 'text-white/50 hover:text-white/80'}`}>Follow along</button>
+    </div>
+  );
+}
+
 // ---- Paint mode ------------------------------------------------------------
 
-const NET = { // face -> [gridRow, gridCol] base (1-indexed)
-  U: [1, 4], L: [4, 1], F: [4, 4], R: [4, 7], B: [4, 10], D: [7, 4],
-};
+const NET = { U: [1, 4], L: [4, 1], F: [4, 4], R: [4, 7], B: [4, 10], D: [7, 4] };
 const FACE_OFFSET = { U: 0, R: 9, F: 18, D: 27, L: 36, B: 45 };
 const CENTER_LOCAL = 4;
 
 function PaintPanel({ startState, onPreview, onCancel, onUse }) {
   const [draft, setDraft] = useState(startState === SOLVED ? SOLVED : startState);
-  const [pick, setPick] = useState('D'); // white by default
+  const [pick, setPick] = useState('D');
   const [err, setErr] = useState(null);
-
   useEffect(() => { onPreview(draft); }, [draft, onPreview]);
 
   const paint = (globalIdx, localIdx) => {
-    if (localIdx === CENTER_LOCAL) return; // centres fixed
+    if (localIdx === CENTER_LOCAL) return;
     setErr(null);
     setDraft((d) => { const a = d.split(''); a[globalIdx] = pick; return a.join(''); });
   };
-
-  const tryUse = () => {
-    const res = validateCube(draft);
-    if (res.valid) onUse(draft);
-    else setErr(res.reason);
-  };
+  const tryUse = () => { const res = validateCube(draft); if (res.valid) onUse(draft); else setErr(res.reason); };
 
   const cells = [];
   for (const [face, [br, bc]] of Object.entries(NET)) {
@@ -220,47 +288,22 @@ function PaintPanel({ startState, onPreview, onCancel, onUse }) {
       const gi = FACE_OFFSET[face] + k;
       const r = br + Math.floor(k / 3), c = bc + (k % 3);
       const isCenter = k === CENTER_LOCAL;
-      cells.push(
-        <button
-          key={gi}
-          onClick={() => paint(gi, k)}
-          style={{ gridRow: r, gridColumn: c, background: COLORS[draft[gi]] }}
-          className={`aspect-square rounded-[3px] border border-black/40 ${isCenter ? 'cursor-default ring-1 ring-white/40' : 'hover:brightness-110'}`}
-          title={isCenter ? 'centre (fixed)' : ''}
-        />,
-      );
+      cells.push(<button key={gi} onClick={() => paint(gi, k)} style={{ gridRow: r, gridColumn: c, background: COLORS[draft[gi]] }} className={`aspect-square rounded-[3px] border border-black/40 ${isCenter ? 'cursor-default ring-1 ring-white/40' : 'hover:brightness-110'}`} title={isCenter ? 'centre (fixed)' : ''} />);
     }
   }
-
   return (
     <Panel className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="font-display text-white/90">Paint your cube</span>
         <button onClick={onCancel} className="text-xs text-white/50 hover:text-white">✕ cancel</button>
       </div>
-      <p className="text-[13px] text-white/55 leading-relaxed">
-        Pick a colour, then click stickers to match your real cube. Centres are fixed. Hold it with
-        <span className="text-white/80"> white on the bottom, green in front.</span>
-      </p>
-
-      {/* palette */}
+      <p className="text-[13px] text-white/55 leading-relaxed">Pick a colour, then click stickers to match your real cube. Centres are fixed. Hold it with <span className="text-white/80">white on the bottom, green in front.</span></p>
       <div className="flex gap-2">
         {['D', 'U', 'F', 'B', 'R', 'L'].map((f) => (
-          <button
-            key={f}
-            onClick={() => setPick(f)}
-            style={{ background: COLORS[f] }}
-            className={`w-9 h-9 rounded-lg border-2 transition ${pick === f ? 'border-white scale-110' : 'border-black/40'}`}
-            title={f}
-          />
+          <button key={f} onClick={() => setPick(f)} style={{ background: COLORS[f] }} className={`w-9 h-9 rounded-lg border-2 transition ${pick === f ? 'border-white scale-110' : 'border-black/40'}`} title={f} />
         ))}
       </div>
-
-      {/* unfolded net */}
-      <div className="grid gap-[3px] mx-auto w-full max-w-[320px]" style={{ gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'repeat(9,1fr)' }}>
-        {cells}
-      </div>
-
+      <div className="grid gap-[3px] mx-auto w-full max-w-[300px]" style={{ gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'repeat(9,1fr)' }}>{cells}</div>
       {err && <p className="text-sm text-red-400">{err}</p>}
       <div className="flex gap-2">
         <button onClick={() => { setDraft(SOLVED); setErr(null); }} className="flex-1 py-2 rounded-xl border border-edge text-sm text-white/70 hover:text-white transition">Reset</button>
@@ -272,9 +315,9 @@ function PaintPanel({ startState, onPreview, onCancel, onUse }) {
 
 // ---- Chrome ----------------------------------------------------------------
 
-function Header({ onShare, canShare }) {
+function Header({ onShare, canShare, solvedCount }) {
   return (
-    <header className="flex items-center justify-between px-5 py-4 max-w-[1400px] w-full mx-auto">
+    <header className="flex items-center justify-between px-4 sm:px-5 py-4 max-w-[1400px] w-full mx-auto">
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-emerald-400 grid place-items-center font-display font-bold text-ink">C</div>
         <div>
@@ -282,9 +325,10 @@ function Header({ onShare, canShare }) {
           <p className="text-[11px] text-white/40 leading-none mt-1">solve any cube · actually learn how</p>
         </div>
       </div>
-      <button onClick={onShare} disabled={!canShare} className="text-xs px-3 py-2 rounded-lg border border-edge text-white/70 hover:text-white hover:border-white/30 disabled:opacity-30 transition">
-        Copy share link
-      </button>
+      <div className="flex items-center gap-2">
+        {solvedCount > 0 && <span className="text-[11px] px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 font-display">✓ {solvedCount} solved</span>}
+        <button onClick={onShare} disabled={!canShare} className="text-xs px-3 py-2 rounded-lg border border-edge text-white/70 hover:text-white hover:border-white/30 disabled:opacity-30 transition">Copy link</button>
+      </div>
     </header>
   );
 }
@@ -312,9 +356,7 @@ function Playback({ playing, onPlay, onPause, onPrev, onNext, onRestart, step, t
       <div className="flex items-center gap-2">
         <IconBtn onClick={onRestart} label="⏮" />
         <IconBtn onClick={onPrev} label="◀" />
-        <button onClick={playing ? onPause : onPlay} className="flex-1 py-2 rounded-lg bg-emerald-500/90 hover:bg-emerald-400 text-ink font-display font-semibold transition">
-          {playing ? 'Pause' : step >= total ? 'Replay' : 'Play'}
-        </button>
+        <button onClick={playing ? onPause : onPlay} className="flex-1 py-2 rounded-lg bg-emerald-500/90 hover:bg-emerald-400 text-ink font-display font-semibold transition">{playing ? 'Pause' : step >= total ? 'Replay' : 'Play'}</button>
         <IconBtn onClick={onNext} label="▶" />
       </div>
       <div className="flex items-center justify-between mt-3">
@@ -352,9 +394,7 @@ function StageList({ stages, current, onJumpStage }) {
                 <p className="text-[13px] text-white/60 mt-2 leading-relaxed">{stage.explanation}</p>
                 {stage.moves.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {stage.moves.map((m, k) => (
-                      <span key={k} className={`text-[11px] px-1.5 py-0.5 rounded font-display ${k === current.localStep ? 'bg-emerald-400 text-ink' : 'bg-ink/70 text-white/55'}`}>{m}</span>
-                    ))}
+                    {stage.moves.map((m, k) => (<span key={k} className={`text-[11px] px-1.5 py-0.5 rounded font-display ${k === current.localStep ? 'bg-emerald-400 text-ink' : 'bg-ink/70 text-white/55'}`}>{m}</span>))}
                   </div>
                 )}
               </>
