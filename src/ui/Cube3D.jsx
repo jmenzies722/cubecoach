@@ -1,5 +1,5 @@
 import React, {
-  forwardRef, useImperativeHandle, useMemo, useRef, useState, useCallback,
+  forwardRef, useImperativeHandle, useMemo, useRef, useState, useCallback, useEffect,
 } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, RoundedBox } from '@react-three/drei';
@@ -101,6 +101,15 @@ const CubeRig = forwardRef(function CubeRig({ initialState, onStep }, ref) {
 
 const Cube3D = forwardRef(function Cube3D({ initialState, onStep }, ref) {
   const rigRef = useRef();
+
+  // r3f's initial ResizeObserver pass doesn't always trigger the first draw
+  // (StrictMode / context timing), leaving the canvas blank until the user
+  // interacts. A resize event on the next frames forces r3f to render.
+  useEffect(() => {
+    const ids = [1, 2].map((n) => requestAnimationFrame(() => setTimeout(() => window.dispatchEvent(new Event('resize')), n * 30)));
+    return () => ids.forEach(cancelAnimationFrame);
+  }, []);
+
   useImperativeHandle(ref, () => ({
     apply: (t, d) => rigRef.current.apply(t, d),
     setStateNow: (s) => rigRef.current.setStateNow(s),
@@ -111,6 +120,7 @@ const Cube3D = forwardRef(function Cube3D({ initialState, onStep }, ref) {
     <Canvas
       className="canvas-touch"
       shadows
+      frameloop="always"
       camera={{ position: [4.2, 4.4, 5.6], fov: 42 }}
       gl={{ antialias: true, alpha: true }}
       dpr={[1, 2]}
