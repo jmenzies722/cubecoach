@@ -1,0 +1,30 @@
+{
+  "name": "cubecoach",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Solve any Rubik's Cube and actually learn how — interactive 3D, step-by-step.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "gen": "node scripts/gen-moves.mjs",
+    "test:engine": "node scripts/verify-engine.mjs",
+    "test:solve": "node scripts/solve-test.mjs 10000"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "cubejs": "^1.3.2",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "vite": "^5.4.10"
+  }
+}

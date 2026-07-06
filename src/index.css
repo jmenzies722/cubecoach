@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 70% -10%, rgba(99, 102, 241, 0.18), transparent 60%),
+    radial-gradient(900px 500px at 10% 110%, rgba(16, 185, 129, 0.12), transparent 55%),
+    #0a0a0f;
+  color: #e7e7ee;
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.font-display {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+
+/* thin scrollbar for the step list */
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #2c2c3a;
+  border-radius: 999px;
+}
+
+.canvas-touch {
+  touch-action: none;
+}
