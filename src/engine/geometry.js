@@ -59,14 +59,17 @@ export const CUBELETS = [];
 
 // Given a facelet string, return the sticker color for each (cubeletPos, normal).
 // Returns a map keyed by "x,y,z" -> array of { normal, color }.
-export function stickersFor(state) {
+// `colors` maps a facelet letter -> hex. Defaults to the canonical scheme, but the
+// paint flow passes a custom map so a cube entered in any orientation renders in the
+// player's own colours during the solve.
+export function stickersFor(state, colors = COLORS) {
   const byCubelet = new Map();
   for (let i = 0; i < 54; i++) {
     const { pos, normal, face } = FACELETS[i];
     const key = pos.join(',');
     if (!byCubelet.has(key)) byCubelet.set(key, []);
     const letter = state[i];
-    byCubelet.get(key).push({ normal, color: COLORS[letter] || '#111', letter, face });
+    byCubelet.get(key).push({ normal, color: colors[letter] || '#111', letter, face, index: i });
   }
   return byCubelet;
 }

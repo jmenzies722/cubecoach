@@ -28,8 +28,8 @@ export default defineConfig({
         'icon.svg',
       ],
       manifest: {
-        name: 'CubeCoach',
-        short_name: 'CubeCoach',
+        name: 'Cubist',
+        short_name: 'Cubist',
         description: "Solve any Rubik's Cube and actually learn how.",
         theme_color: '#0a0a0f',
         background_color: '#0a0a0f',

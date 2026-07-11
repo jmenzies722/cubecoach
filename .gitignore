@@ -4,3 +4,7 @@ dist
 *.local
 .vite
 .vercel
+
+# design handoff artifacts (bloat)
+_design_import/
+*.zip

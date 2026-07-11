@@ -40,3 +40,25 @@ body {
 .canvas-touch {
   touch-action: none;
 }
+
+/* Coach / product motion. All decorative — respect reduced-motion below. */
+@keyframes ccSweep {
+  0% { opacity: 0; transform: translateX(-45%); }
+  28% { opacity: 0.95; }
+  100% { opacity: 0; transform: translateX(65%); }
+}
+@keyframes ccRise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ccPulseDot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
+  50% { box-shadow: 0 0 0 7px rgba(99, 102, 241, 0); }
+}
+.cc-sweep { animation: ccSweep 1.5s ease-out forwards; }
+.cc-rise { animation: ccRise 0.5s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-sweep, .cc-rise { animation: none !important; }
+  .cc-sweep { opacity: 0 !important; }
+}
